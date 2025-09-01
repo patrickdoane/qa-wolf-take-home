@@ -1,17 +1,13 @@
 {
-  "name": "qa_wolf_take_home",
+  "name": "qa-wolf-take-home",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {},
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "playwright": "^1.39.0"
+  "type": "module",
+  "scripts": {
+    "start": "node src/cli.js",
+    "test": "node --test",
+    "lint": "node -e \"console.log('lint placeholder')\""
   },
-  "devDependencies": {
-    "@playwright/test": "^1.39.0",
-    "@types/node": "^20.8.9"
+  "dependencies": {
+    "playwright": "^1.46.0"
   }
 }
