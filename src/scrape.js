@@ -2,7 +2,6 @@
 import { chromium } from "playwright";
 import { parseAgeToEpoch } from "./parse.js";
 
-// Utility: retry an async op with small backoff
 async function withRetries(fn, { attempts = 3, delayMs = 300 } = {}) {
   let err;
   for (let i = 0; i < attempts; i++) {
@@ -15,16 +14,15 @@ async function withRetries(fn, { attempts = 3, delayMs = 300 } = {}) {
   throw err;
 }
 
-// Extract items on the current page
 async function collectPageItems(page) {
   await page.waitForSelector("tr.athing", { timeout: 10_000 });
   return await page.$$eval("tr.athing", (rows) => {
     return rows.map((row) => {
+      const id = row.getAttribute("id") || ""; // <-- canonical HN story id
       const titleLink = row.querySelector(".titleline a");
       const title = titleLink?.textContent?.trim() || "";
       const url = titleLink?.getAttribute("href") || "";
 
-      // subtext row is nextElementSibling
       const sub = row.nextElementSibling;
       const subtext = sub?.querySelector(".subtext");
       const ageLink = subtext?.querySelector(".age a");
@@ -37,13 +35,27 @@ async function collectPageItems(page) {
           .map((a) => a.textContent?.trim() || "")
           .find((t) => /comment/.test(t)) || "";
 
-      return { title, url, ageText, score, by, commentsText };
+      return { id, title, url, ageText, score, by, commentsText };
     });
   });
 }
 
-export async function crawlAndSort({
-  pagesToScan = 3,
+function dedupeById(items) {
+  const seen = new Map(); // id -> item
+  for (const it of items) {
+    if (!it?.id) continue; // skip weird rows (shouldn't happen)
+    if (!seen.has(it.id)) seen.set(it.id, it);
+  }
+  return Array.from(seen.values());
+}
+
+/**
+ * Crawl forward through “newest” by clicking “More”, collecting unique items
+ * until we reach `target` or run out of pages (maxPages).
+ */
+export async function crawlUntilTarget({
+  target = 100,
+  maxPages = 10,
   headless = true,
   navTimeout = 15_000,
 } = {}) {
@@ -57,14 +69,14 @@ export async function crawlAndSort({
       page.goto("https://news.ycombinator.com/newest", { waitUntil: "domcontentloaded" })
     );
 
-    const all = [];
-    for (let i = 0; i < pagesToScan; i++) {
+    let all = [];
+    for (let i = 0; i < maxPages; i++) {
       const items = await withRetries(() => collectPageItems(page));
-      all.push(...items);
+      all = dedupeById(all.concat(items));
+      if (all.length >= target) break;
 
       const more = page.locator("a.morelink");
-      const hasMore = await more.count();
-      if (!hasMore) break;
+      if (!(await more.count())) break;
 
       await withRetries(async () => {
         await more.first().click();
@@ -72,13 +84,8 @@ export async function crawlAndSort({
       });
     }
 
-    // enrich with age epoch/minutes to sort & filter
-    const enriched = all.map((it) => {
-      const parsed = parseAgeToEpoch(it.ageText);
-      return { ...it, __age: parsed };
-    });
-
-    enriched.sort((a, b) => a.__age.epoch - b.__age.epoch); // oldest → newest
+    // enrich ages now (so CLI doesn’t need to) — still OK to re-ensure later
+    const enriched = all.map((it) => ({ ...it, __age: parseAgeToEpoch(it.ageText) }));
     return enriched;
   } finally {
     await browser.close();

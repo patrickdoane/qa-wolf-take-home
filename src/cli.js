@@ -1,11 +1,11 @@
 // src/cli.js
-import { crawlAndSort } from "./scrape.js";
+import { crawlUntilTarget } from "./scrape.js";
 import { filterByMinAgeMinutes, sortByAgeAscending } from "./parse.js";
 import { formatPretty, formatJSON, formatCSV } from "./format.js";
 
 function parseArgs(argv) {
   const args = {
-    pages: 4,
+    pages: 10,        // allow up to 10 by default so we can hit the target reliably
     format: "pretty",
     headful: false,
     minAge: 0,
@@ -31,57 +31,30 @@ function printHelp() {
 Usage:
   node src/cli.js [--target=N] [--pages=N] [--format=pretty|json|csv] [--min-age=MIN] [--headful] [--timeout=MS]
   node src/cli.js help | h
-
-Examples:
-  node src/cli.js                 # fetches 100 posts by default
-  node src/cli.js --target=50     # fetch exactly 50 posts
-  node src/cli.js --target=200 --format=json
-  node src/cli.js help            # show this help
-  node src/cli.js h               # show this help (short alias)
 `);
 }
 
 (async function main() {
   const opts = parseArgs(process.argv);
-  if (opts.help) {
-    printHelp();
-    process.exit(0); // <- ensure no crawling happens after help
-  }
+  if (opts.help) { printHelp(); process.exit(0); }
 
-  let collected = [];
-  let pagesScanned = 0;
+  const items = await crawlUntilTarget({
+    target: isNaN(opts.target) ? 100 : opts.target,
+    maxPages: isNaN(opts.pages) ? 10 : opts.pages,
+    headless: !opts.headful,
+    navTimeout: isNaN(opts.timeout) ? 15000 : opts.timeout,
+  });
 
-  while (collected.length < opts.target) {
-    // We still crawl one page at a time but we'll do a GLOBAL sort later.
-    const batch = await crawlAndSort({
-      pagesToScan: 1,
-      headless: !opts.headful,
-      navTimeout: opts.timeout,
-    });
-    collected.push(...batch);
-    pagesScanned++;
-
-    if (pagesScanned >= opts.pages && collected.length < opts.target) {
-      console.warn(`⚠️ Only ${collected.length} items found after ${opts.pages} pages (target ${opts.target}).`);
-      break;
-    }
-  }
-
-  // Filter (if any), then GLOBAL sort, then slice to exact target.
-  const filtered = filterByMinAgeMinutes(collected, opts.minAge);
+  // Filter (optional), GLOBAL sort, then slice to exact target.
+  const filtered = filterByMinAgeMinutes(items, opts.minAge);
   const globallySorted = sortByAgeAscending(filtered);
   const finalItems = globallySorted.slice(0, opts.target);
 
   let out = "";
   switch ((opts.format || "pretty").toLowerCase()) {
-    case "json":
-      out = formatJSON(finalItems);
-      break;
-    case "csv":
-      out = formatCSV(finalItems);
-      break;
-    default:
-      out = formatPretty(finalItems);
+    case "json": out = formatJSON(finalItems); break;
+    case "csv":  out = formatCSV(finalItems);  break;
+    default:     out = formatPretty(finalItems);
   }
   process.stdout.write(out);
 })().catch((e) => {
