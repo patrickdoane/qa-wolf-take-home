@@ -15,7 +15,8 @@ I extended the baseline solution into a small **CLI tool** that is:
 - Crawl Hacker News “newest” posts using Playwright.
 - Collect across multiple pages (with retry handling).
 - Compute ages (minutes/hours/days → epoch) for reliable sorting.
-- Global sort (oldest → newest) applied before output.
+- Global sort (newest -> oldest) applied before output.
+- Prevents duplicates using each story’s canonical Hacker News id.
 - Configurable output:  
   - `pretty` (human-readable console)  
   - `json` (machine-readable, structured)  
@@ -28,7 +29,7 @@ I extended the baseline solution into a small **CLI tool** that is:
   - `--headful` → run browser with UI (default is headless).  
   - `--timeout=MS` → navigation/wait timeout in ms (default: 15000).  
   - `help` / `h` → show usage info.  
-
+  - `order=asc|desc` → sort direction (default: desc, newest first)
 ---
 
 ## 🛠️ Setup

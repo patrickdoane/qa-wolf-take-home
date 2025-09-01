@@ -5,23 +5,26 @@ import { formatPretty, formatJSON, formatCSV } from "./format.js";
 
 function parseArgs(argv) {
   const args = {
-    pages: 10,        // allow up to 10 by default so we can hit the target reliably
+    pages: 10,
     format: "pretty",
     headful: false,
     minAge: 0,
     target: 100,
     timeout: 15000,
+    order: "desc", // NEW: default newest first to match what you see on HN
   };
 
   for (let i = 2; i < argv.length; i++) {
-    const a = argv[i].toLowerCase();
-    if (a.startsWith("--pages=")) args.pages = parseInt(a.split("=")[1], 10);
-    else if (a.startsWith("--format=")) args.format = a.split("=")[1];
-    else if (a.startsWith("--min-age=")) args.minAge = parseInt(a.split("=")[1], 10);
-    else if (a.startsWith("--target=")) args.target = parseInt(a.split("=")[1], 10);
-    else if (a === "--headful") args.headful = true;
-    else if (a.startsWith("--timeout=")) args.timeout = parseInt(a.split("=")[1], 10);
-    else if (a === "--help" || a === "-h" || a === "help" || a === "h") args.help = true;
+    const a = argv[i];
+    const al = a.toLowerCase();
+    if (al.startsWith("--pages=")) args.pages = parseInt(a.split("=")[1], 10);
+    else if (al.startsWith("--format=")) args.format = a.split("=")[1];
+    else if (al.startsWith("--min-age=")) args.minAge = parseInt(a.split("=")[1], 10);
+    else if (al.startsWith("--target=")) args.target = parseInt(a.split("=")[1], 10);
+    else if (al.startsWith("--order=")) args.order = a.split("=")[1].toLowerCase(); // asc|desc
+    else if (al === "--headful") args.headful = true;
+    else if (al.startsWith("--timeout=")) args.timeout = parseInt(a.split("=")[1], 10);
+    else if (al === "--help" || al === "-h" || al === "help" || al === "h") args.help = true;
   }
   return args;
 }
@@ -29,8 +32,17 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`
 Usage:
-  node src/cli.js [--target=N] [--pages=N] [--format=pretty|json|csv] [--min-age=MIN] [--headful] [--timeout=MS]
+  node src/cli.js [--target=N] [--pages=N] [--format=pretty|json|csv] [--order=asc|desc] [--min-age=MIN] [--headful] [--timeout=MS]
   node src/cli.js help | h
+
+Defaults:
+  --target=100  --order=desc (newest first)  --pages=10  --format=pretty
+
+Examples:
+  node src/cli.js
+  node src/cli.js --order=asc            # oldest first
+  node src/cli.js --target=50 --format=json
+  node src/cli.js --target=200 --pages=12 --min-age=120 --format=csv
 `);
 }
 
@@ -45,10 +57,11 @@ Usage:
     navTimeout: isNaN(opts.timeout) ? 15000 : opts.timeout,
   });
 
-  // Filter (optional), GLOBAL sort, then slice to exact target.
+  // Filter → global sort ascending → apply order → slice to EXACT target
   const filtered = filterByMinAgeMinutes(items, opts.minAge);
-  const globallySorted = sortByAgeAscending(filtered);
-  const finalItems = globallySorted.slice(0, opts.target);
+  const asc = sortByAgeAscending(filtered);
+  const ordered = opts.order === "asc" ? asc : asc.slice().reverse();
+  const finalItems = ordered.slice(0, opts.target);
 
   let out = "";
   switch ((opts.format || "pretty").toLowerCase()) {
